@@ -1,0 +1,3 @@
+<?php
+// Fungsi autentikasi multi-role
+// ...fungsi login, cek role, dsb...
