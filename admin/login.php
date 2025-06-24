@@ -1,8 +1,8 @@
 <?php
+ob_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-ob_start(); // Pastikan tidak ada output sebelum header
-// Login Admin - Email & Password dari Database
+// Login Admin - Hanya dengan level_akses
 session_start();
 if (isset($_SESSION['admin']))
     header('Location: dashboard.php');
@@ -11,47 +11,32 @@ include '../includes/db.php';
 $message = '';
 
 if (isset($_POST['login'])) {
-    // Debug: cek apakah POST diterima
-    // echo 'POST diterima<br>';
-    $email = trim($_POST['email']);
-    $password = trim($_POST['password']);
-
-    // Cari admin berdasarkan email
-    $admin_query = "SELECT pg.*, a.level_akses 
+    $level_akses = trim($_POST['level_akses']);
+    // Cari admin berdasarkan level_akses
+    $admin_query = "SELECT pg.*, a.level_akses, a.id as admin_id 
                    FROM pengguna pg 
                    JOIN admin a ON pg.id = a.id_pengguna 
-                   WHERE pg.email = '" . $conn->real_escape_string($email) . "' 
+                   WHERE a.level_akses = '" . $conn->real_escape_string($level_akses) . "' 
                    AND pg.validasi_akun = 1";
     $admin_result = $conn->query($admin_query);
-
     if ($admin_result && $admin_result->num_rows > 0) {
         $admin_data = $admin_result->fetch_assoc();
-        // Debug: cek data admin
-        // echo 'Data admin ditemukan<br>';
-        if ($admin_data['password'] === $password) {
-            // Debug: password cocok
-            // echo 'Password cocok, redirect...';
-            // Set session admin
-            $_SESSION['admin'] = [
-                'id' => $admin_data['id'],
-                'nama' => $admin_data['nama'],
-                'email' => $admin_data['email'],
-                'level_akses' => $admin_data['level_akses'],
-                'login_time' => date('Y-m-d H:i:s')
-            ];
-            // Log aktivitas login
-            $log_query = "INSERT INTO notifikasi (id_pengguna, judul, pesan, tanggal, status, dari_sistem) 
-                         VALUES ({$admin_data['id']}, 'Login Admin', 'Admin berhasil login ke sistem', NOW(), 1, 1)";
-            $conn->query($log_query);
-            header('Location: dashboard.php');
-            exit;
-        } else {
-            // echo 'Password salah';
-            $message = '<div class="alert alert-danger"><i class="icon">❌</i><div><strong>Login Gagal!</strong><br>Password salah.</div></div>';
-        }
+        // Set session admin
+        $_SESSION['admin'] = [
+            'id' => $admin_data['id'],
+            'nama' => $admin_data['nama'],
+            'email' => $admin_data['email'],
+            'level_akses' => $admin_data['level_akses'],
+            'login_time' => date('Y-m-d H:i:s')
+        ];
+        // Log aktivitas login
+        $log_query = "INSERT INTO notifikasi (id_pengguna, judul, pesan, tanggal, status, dari_sistem) 
+                     VALUES ({$admin_data['id']}, 'Login Admin', 'Admin berhasil login ke sistem', NOW(), 1, 1)";
+        $conn->query($log_query);
+        header('Location: dashboard.php');
+        exit;
     } else {
-        // echo 'Admin tidak ditemukan';
-        $message = '<div class="alert alert-danger"><i class="icon">⚠️</i><div><strong>Login Gagal!</strong><br>Email tidak ditemukan atau akun belum divalidasi.</div></div>';
+        $message = '<div class="alert alert-danger"><i class="icon">⚠️</i><div><strong>Login Gagal!</strong><br>Level akses tidak ditemukan atau akun belum divalidasi.</div></div>';
     }
 }
 ?>
@@ -382,41 +367,22 @@ if (isset($_POST['login'])) {
                     <i class="bi bi-shield-lock"></i>
                 </div>
                 <h1 class="brand-title">Admin Login</h1>
-                <p class="brand-subtitle">Masuk ke dashboard admin untuk mengelola sistem kereta</p>
+                <p class="brand-subtitle">Masuk ke dashboard admin dengan level akses</p>
             </div>
-
-            <!-- Login Information -->
-            <div class="login-info">
-                <h6><i class="bi bi-info-circle me-1"></i>Informasi Login</h6>
-                <p>Username: <span class="credentials">admin</span></p>
-                <p>Password: <span class="credentials">AdmiN123</span></p>
-            </div>
-
             <?= $message; ?>
-
             <form method="post" class="form-login" autocomplete="off">
                 <div class="form-group">
-                    <label class="form-label" for="email">
-                        <i class="bi bi-envelope me-1"></i>Email
+                    <label class="form-label" for="level_akses">
+                        <i class="bi bi-person-badge me-1"></i>Level Akses
                     </label>
-                    <input type="email" name="email" id="email" class="form-control"
-                        placeholder="Masukkan email admin" required autofocus>
+                    <input type="text" name="level_akses" id="level_akses" class="form-control"
+                        placeholder="Masukkan level akses admin" required autofocus>
                 </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="password">
-                        <i class="bi bi-lock me-1"></i>Password
-                    </label>
-                    <input type="password" name="password" id="password" class="form-control"
-                        placeholder="Masukkan password" required>
-                </div>
-
                 <button type="submit" name="login" class="btn-primary">
                     <i class="bi bi-box-arrow-in-right me-2"></i>
                     Login Admin
                 </button>
             </form>
-
             <div class="auth-footer">
                 <p>
                     <i class="bi bi-question-circle me-1"></i>
@@ -430,64 +396,6 @@ if (isset($_POST['login'])) {
             </div>
         </div>
     </div>
-
-    <script>
-        // Auto-fill password untuk kemudahan testing
-        document.addEventListener('DOMContentLoaded', function () {
-            const passwordField = document.getElementById('password');
-            const emailField = document.getElementById('email');
-
-            // Auto-fill password ketika email sudah terisi
-            emailField.addEventListener('input', function () {
-                if (this.value === 'admin@keretaconnect.com') {
-                    passwordField.value = 'AdmiN123';
-                }
-            });
-
-            // Form submission enhancement
-            const form = document.querySelector('form');
-            const submitBtn = document.querySelector('.btn-primary');
-
-            form.addEventListener('submit', function () {
-                submitBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-2"></i>Memproses...';
-                submitBtn.disabled = true;
-            });
-
-            // Enter key navigation
-            emailField.addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') {
-                    passwordField.focus();
-                }
-            });
-
-            passwordField.addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') {
-                    form.submit();
-                }
-            });
-        });
-
-        // Floating animation enhancement
-        document.addEventListener('mousemove', function (e) {
-            const authCard = document.querySelector('.auth-card');
-            const rect = authCard.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-
-            const rotateX = (y - centerY) / 30;
-            const rotateY = (centerX - x) / 30;
-
-            authCard.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
-        });
-
-        document.addEventListener('mouseleave', function () {
-            const authCard = document.querySelector('.auth-card');
-            authCard.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
-        });
-    </script>
 </body>
 
 </html>

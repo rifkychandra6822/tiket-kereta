@@ -5,13 +5,32 @@ if (!isset($_SESSION['admin'])) header('Location: login.php');
 include '../includes/db.php';
 $message = '';
 
-if (isset($_POST['tambah'])) {
-    $nama = $conn->real_escape_string($_POST['nama']);
+// PRG pattern: handle POST, then redirect
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tambah'])) {
+    $nama = trim($conn->real_escape_string($_POST['nama']));
     $harga = intval($_POST['harga']);
     $status = isset($_POST['status']) ? 1 : 0;
     
-    $conn->query("INSERT INTO menu_makanan (nama, harga, status) VALUES ('$nama', $harga, $status)");
-    $message = '<div class="alert alert-success">Menu makanan berhasil ditambah!</div>';
+    // Cek duplikat nama menu
+    $cek = $conn->query("SELECT COUNT(*) as jml FROM menu_makanan WHERE nama='$nama'");
+    $rowCek = $cek ? $cek->fetch_assoc() : ['jml'=>0];
+    if ($nama === '' || $harga < 0) {
+        $message = '<div class="alert alert-danger">Nama dan harga harus diisi dengan benar.</div>';
+    } else if ($rowCek['jml'] > 0) {
+        $message = '<div class="alert alert-danger">Menu dengan nama yang sama sudah ada.</div>';
+    } else {
+        $insert = $conn->query("INSERT INTO menu_makanan (nama, harga, status) VALUES ('$nama', $harga, $status)");
+        if ($insert) {
+            header('Location: kelola_menu_makanan.php?success=1&nama=' . urlencode($nama));
+            exit();
+        } else {
+            $message = '<div class="alert alert-danger">Gagal menambah menu: ' . $conn->error . '</div>';
+        }
+    }
+}
+
+if (isset($_GET['success']) && isset($_GET['nama'])) {
+    $message = '<div class="alert alert-success">Menu makanan <b>' . htmlspecialchars($_GET['nama']) . '</b> berhasil ditambah!</div>';
 }
 
 if (isset($_POST['update'])) {
@@ -64,14 +83,62 @@ if ($total_menu > 0) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kelola Menu Makanan - Admin Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/login_admin.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        
+        body { min-height: 0; height: auto; overflow-y: auto !important; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        html { height: auto; }
+        .dashboard-container { max-width: 900px; margin: 2rem auto; }
+        .dashboard-card { background: #fff; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); padding: 2rem; z-index: 1; position: relative; }
+        .header { display: flex; align-items: center; margin-bottom: 2rem; }
+        .header-left { display: flex; align-items: center; gap: 1.5rem; }
+        .brand-logo { width: 60px; height: 60px; background: var(--gradient-primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #fff; box-shadow: 0 4px 16px rgba(102,126,234,0.15); }
+        .header-title h1 { font-size: 2rem; font-weight: 700; margin: 0; }
+        .header-title p { color: var(--text-light); margin: 0.25rem 0 0 0; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: var(--background-light); border-radius: 16px; padding: 1.25rem; text-align: center; box-shadow: 0 2px 8px rgba(59,130,246,0.04); }
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary-blue); }
+        .stat-label { color: var(--text-light); font-size: 0.95rem; }
+        .form-container { background: #f9fafb; border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 8px rgba(59,130,246,0.04); }
+        .form-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; }
+        .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-group { flex: 1 1 200px; }
+        .form-check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .btn-success, .btn-warning, .btn-danger, .btn-info, .btn-secondary { border: none; border-radius: 8px; padding: 0.6rem 1.2rem; font-weight: 600; cursor: pointer; transition: background 0.2s; pointer-events: auto; }
+        .btn-success { background: linear-gradient(90deg,#10b981,#3b82f6); color: #fff; }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-info { background: #3b82f6; color: #fff; }
+        .btn-secondary { background: #e5e7eb; color: #1e40af; }
+        .btn-success:hover { background: #059669; }
+        .btn-warning:hover { background: #d97706; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-info:hover { background: #2563eb; }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .table-container { margin-top: 2rem; }
+        .table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(59,130,246,0.04); }
+        .table th, .table td { padding: 0.9rem 1rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        .table th { background: #f3f4f6; font-weight: 600; color: var(--primary-blue); }
+        .table tr:last-child td { border-bottom: none; }
+        .status-badge { padding: 0.3rem 0.9rem; border-radius: 12px; font-size: 0.95rem; font-weight: 600; }
+        .status-active { background: #d1fae5; color: #059669; }
+        .status-inactive { background: #fee2e2; color: #b91c1c; }
+        .action-buttons { display: flex; gap: 0.5rem; pointer-events: auto !important; }
+        .empty-state { text-align: center; color: var(--text-light); margin: 2rem 0; }
+        .empty-state-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100vw; height: 100vh; overflow: auto; background: rgba(31,41,55,0.25); }
+        .modal-content { background: #fff; margin: 5% auto; border-radius: 16px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); position: relative; }
+        .modal-header { margin-bottom: 1rem; }
+        .modal-title { font-size: 1.2rem; font-weight: 600; }
+        .close { position: absolute; right: 1.2rem; top: 1.2rem; font-size: 1.5rem; color: #6b7280; cursor: pointer; }
+        @media (max-width: 900px) { .dashboard-container { padding: 0 0.5rem; } .stats-grid { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 600px) { .dashboard-card { padding: 1rem; } .stats-grid { grid-template-columns: 1fr; } .form-row { flex-direction: column; } }
     </style>
 </head>
 <body>
@@ -141,7 +208,6 @@ if ($total_menu > 0) {
                 <div class="table-header">
                     <h3>Daftar Menu Makanan</h3>
                 </div>
-                
                 <?php if (count($menu_list) > 0): ?>
                     <table class="table">
                         <thead>
@@ -166,17 +232,14 @@ if ($total_menu > 0) {
                                     </td>
                                     <td>
                                         <div class="action-buttons">
-                                            <button class="btn-warning" onclick="editMenu(<?= $row['id'] ?>, '<?= htmlspecialchars($row['nama']) ?>', <?= $row['harga'] ?>, <?= $row['status'] ?>)">
-                                                ✏️ Edit
-                                            </button>
+                                            <button class="btn-warning" type="button" onclick="editMenu(<?= $row['id'] ?>, '<?= htmlspecialchars($row['nama'], ENT_QUOTES) ?>', <?= $row['harga'] ?>, <?= $row['status'] ?>)">✏️ Edit</button>
                                             <a href="?toggle_status=<?= $row['id']; ?>" class="btn-info" onclick="return confirm('Ubah status menu ini?')">
                                                 <?= $row['status'] ? '🔴 Nonaktifkan' : '🟢 Aktifkan' ?>
                                             </a>
                                             <a href="?hapus=<?= $row['id']; ?>" class="btn-danger" onclick="return confirm('Hapus menu ini? Tindakan ini tidak dapat dibatalkan!')">
                                                 🗑️ Hapus
-                                            </a>
-                                        </div>
-                                    </td>
+                                            </div>
+                                        </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -209,11 +272,11 @@ if ($total_menu > 0) {
             <form method="POST" id="editForm">
                 <input type="hidden" name="id" id="editId">
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label class="form-label">Nama Menu</label>
+                    <label class="form-label" for="editNama">Nama Menu</label>
                     <input type="text" name="nama" id="editNama" class="form-control" required>
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label class="form-label">Harga (Rp)</label>
+                    <label class="form-label" for="editHarga">Harga (Rp)</label>
                     <input type="number" name="harga" id="editHarga" class="form-control" min="0" required>
                 </div>
                 <div class="form-check" style="margin-bottom: 20px;">
@@ -262,11 +325,6 @@ if ($total_menu > 0) {
                 e.target.value = value;
             });
         });
-
-        // Auto-refresh every 60 seconds
-        setInterval(function() {
-            console.log('Checking for menu updates...');
-        }, 60000);
 
         // Confirmation for status toggle
         document.querySelectorAll('a[href*="toggle_status"]').forEach(link => {
